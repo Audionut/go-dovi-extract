@@ -4,7 +4,8 @@ The read grammar in rpu.go, blocks.go and the metadata definitions is translated
 from quietvoid/dovi_tool revision 614c816b6446dcd1dbaf433403d499a6026fbb5a:
 dolby_vision/src/rpu/{dovi_rpu,rpu_data_header,rpu_data_mapping,rpu_data_nlq,vdr_dm_data}.rs
 and extension_metadata/{mod,cmv29,cmv40,blocks/level*}.rs.
-Only parsing and validation are adapted; no conversion or editing is provided.
+The L1 plotting model and captions in render_data.go are also adapted from
+src/dovi/{plotter,rpu_info}.rs at that revision. No conversion or editing is provided.
 
 ## dovi_tool
 MIT License
@@ -333,3 +334,9 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
    See the License for the specific language governing permissions and
    limitations under the License.
+
+Rendering primitives in render_draw.go and render.go are adapted from
+Audionut/go-hdr10-plus render.go revision 34d94903fa8cff09fc36df1bc0e42daa40a23ed5,
+under the Audionut MIT notice above. The integer tick selection follows
+Plotters 0.3.7 ranged1d/types/numeric.rs and combinators/linspace.rs, MIT licensed,
+Copyright (c) 2019-2021 Hao Hou <haohou302@gmail.com>, under the MIT terms above.

@@ -106,11 +106,21 @@ L10 target index/max PQ/min PQ/primary index then optional RGB/white xy; L11 fou
 encoded bytes; L254 mode/version. L253 validates filler bytes and records length.
 L1/L5/L6 convenience fields must agree with their blocks.
 
-Plots are opaque 3000×1200 images with an embedded Go font, normalized-PQ curves
-and nit-labelled ticks. Per-column envelopes retain narrow extrema; missing buckets
-break connections. Crops use inclusive original indices, with nil end distinct
-from zero; statistics describe the selected range. A 100-nit PQ axis floor affects
-only rendering. These are metadata visualizations, not measured pixel luminance.
+Plots follow `dovi_tool`'s L1 graph: opaque 3000×1200 images, maximum/average/minimum
+filled areas, normalized-PQ coordinates with nit-labelled ticks, observed-peak
+scaling, and upstream statistics and metadata captions. Samples are drawn directly
+without downsampling. Crops select inclusive original indices (nil end differs
+from zero), then display frame numbers from zero as the original tool does.
+Statistics describe the selected range. These are metadata visualizations, not
+measured pixel luminance.
+
+The embedded Go font, text spacing, antialiasing and integer alpha blending can
+differ from Rust; PNG bytes are not identical. Long captions are fitted to avoid
+overlap. Missing metadata remains a gap and is disclosed, rather than replaced by
+synthetic L1 values. Unknown compressed mastering fields remain unknown. Unlike
+the original Plotters tick generator, peaks below 100 nits do not hang; all-zero
+metadata uses a finite one-code PQ range. See [plot provenance](testdata/PLOT_PROVENANCE.md)
+for original-source numerical and image comparisons.
 
 ## Full-analysis persistence contract (version 1)
 
@@ -141,7 +151,7 @@ extension blocks per RPU. Storage sublimits cannot exceed the operation limit.
 These are allocation-accounting limits, not process RSS. `MemoryBudget` can measure
 or constrain active extraction work; returned results become caller-owned.
 Analysis/summary each have separate 512 MiB default budgets. Rendering has its
-own 32 MiB budget. Retaining multiple results/images and caller PNG buffers can
+own 48 MiB budget. Retaining multiple results/images and caller PNG buffers can
 exceed any one operation's budget.
 
 ```powershell

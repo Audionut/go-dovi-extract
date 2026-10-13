@@ -1,0 +1,21 @@
+{
+  "Ceiling": 0.0,
+  "Stats": [
+    0.0,
+    0.0,
+    0.0,
+    0.0,
+    0.0
+  ],
+  "Ticks": null,
+  "Left": [
+    "Frames: 96. Profile: 8. Scenes: 4. DM version: 1 (CM v2.9).",
+    "RPU mastering display: 0.0001/1000 nits",
+    "L6 metadata: None"
+  ],
+  "Right": [
+    "",
+    "",
+    "L5 offsets: top=N/A, bottom=N/A, left=N/A, right=N/A"
+  ]
+}

@@ -6,31 +6,26 @@ import (
 	"golang.org/x/image/font"
 	"golang.org/x/image/font/gofont/goregular"
 	"golang.org/x/image/font/opentype"
-	"golang.org/x/image/math/fixed"
+	"golang.org/x/image/vector"
 	"image"
 	"image/color"
 	"image/draw"
 	"math"
-	"strings"
-	"unicode/utf8"
 )
 
 // PlotOptions uses inclusive original timeline indices; nil End differs from
-// an explicit zero. MaxBytes bounds this call's allocations, excluding input
-// and caller PNG encoding. Zero chooses 32 MiB and finite input limits.
+// an explicit zero. The displayed crop begins at frame zero, like dovi_tool.
+// MaxBytes bounds rendering allocations, excluding input and caller PNG encoding.
+// Zero chooses 48 MiB and finite input limits.
 type PlotOptions struct {
 	Title      string
 	Start, End *uint64
 	MaxBytes   int64
 	MaxRecords int
 }
-type plotBucket struct {
-	first, last, lo, hi [3]uint16
-	present, gap        bool
-}
 
-// Render returns an opaque 3000×1200 image of L1 metadata in PQ coordinates.
-// Missing samples never become zero brightness or connect adjacent runs.
+// Render returns an opaque 3000×1200 dovi_tool-style L1 plot in PQ coordinates.
+// Missing samples remain gaps rather than synthetic brightness measurements.
 func Render(ctx context.Context, a *Analysis, o PlotOptions) (image.Image, error) {
 	if ctx == nil || o.MaxBytes < 0 || o.MaxRecords < 0 || len(o.Title) > 1024 {
 		return nil, ErrInvalidOptions
@@ -43,9 +38,10 @@ func Render(ctx context.Context, a *Analysis, o PlotOptions) (image.Image, error
 	}
 	budget := o.MaxBytes
 	if budget == 0 {
-		budget = 32 << 20
+		budget = 48 << 20
 	}
-	if budget < 24<<20 {
+	// Canvas, both vector buffers, fonts/glyphs and fixed caption inventories.
+	if budget < 48<<20 {
 		return nil, ErrLimit
 	}
 	start, end := uint64(0), uint64(a.length()-1)
@@ -58,250 +54,212 @@ func Render(ctx context.Context, a *Analysis, o PlotOptions) (image.Image, error
 	if start > end || end >= uint64(a.length()) {
 		return nil, ErrInvalidOptions
 	}
-	const left, right, top, bottom = 190, 2880, 185, 990
-	const width = right - left + 1
-	buckets := make([]plotBucket, width)
-	var stats statisticAccumulator
-	var profiles [9]bool
-	var cm29, cm40, scenes, l5, trims int
-	var source [2]uint16
-	var mastering L6
-	var sourceCount, l6Count int
-	var sourceMixed, l6Mixed bool
-	for i := start; i <= end; i++ {
-		if i%4096 == 0 {
-			if err := ctx.Err(); err != nil {
-				return nil, err
-			}
-		}
-		x := (width - 1) / 2
-		if end > start {
-			x = int((i - start) * uint64(width-1) / (end - start))
-		}
-		bucket := &buckets[x]
-		r := a.record(int(i))
-		if r == nil {
-			bucket.gap = true
-			continue
-		}
-		profiles[r.Profile] = true
-		if r.DM == nil {
-			bucket.gap = true
-			continue
-		}
-		d := r.DM
-		if d.Base != nil {
-			value := [2]uint16{d.Base.SourceMinPQ, d.Base.SourceMaxPQ}
-			if sourceCount == 0 {
-				source = value
-			} else if source != value {
-				sourceMixed = true
-			}
-			sourceCount++
-		}
-		if d.L6 != nil {
-			if l6Count == 0 {
-				mastering = *d.L6
-			} else if mastering != *d.L6 {
-				l6Mixed = true
-			}
-			l6Count++
-		}
-		if d.CM29 {
-			cm29++
-		}
-		if d.CM40 {
-			cm40++
-		}
-		if d.SceneRefresh == 1 {
-			scenes++
-		}
-		if d.L5 != nil {
-			l5++
-		}
-		for _, b := range d.Blocks {
-			if b.Level == 2 || b.Level == 8 {
-				trims++
-			}
-		}
-		if d.L1 == nil {
-			bucket.gap = true
-			continue
-		}
-		v := d.L1
-		stats.add(*v)
-		values := [3]uint16{v.MaxPQ, v.AvgPQ, v.MinPQ}
-		if !bucket.present {
-			bucket.first = values
-			bucket.lo = values
-			bucket.hi = values
-			bucket.present = true
-		}
-		bucket.last = values
-		for j := range 3 {
-			bucket.lo[j] = min(bucket.lo[j], values[j])
-			bucket.hi[j] = max(bucket.hi[j], values[j])
-		}
-	}
-	if stats.count == 0 {
-		return nil, ErrNoL1
-	}
-	floor, _ := NitsToPQ(100)
-	ceiling := max(floor, float64(max(stats.max, stats.avg))/4095)
-	// Unusual L1 ordering remains visible without modifying source values.
-	for _, b := range buckets {
-		for _, v := range b.hi {
-			ceiling = max(ceiling, float64(v)/4095)
-		}
-	}
-	ceiling = min(1, ceiling*1.04)
-	canvas := image.NewRGBA(image.Rect(0, 0, 3000, 1200))
-	draw.Draw(canvas, canvas.Bounds(), image.White, image.Point{}, draw.Src)
-	ttf, err := opentype.Parse(goregular.TTF)
+	data, err := collectPlot(ctx, a, int(start), int(end), budget-(40<<20))
 	if err != nil {
 		return nil, err
 	}
-	face, err := opentype.NewFace(ttf, &opentype.FaceOptions{Size: 25, DPI: 72, Hinting: font.HintingFull})
+	return renderPlot(ctx, a, int(start), int(end), o.Title, data)
+}
+
+func renderPlot(ctx context.Context, a *Analysis, start, end int, title string, data plotData) (image.Image, error) {
+	parsed, err := opentype.Parse(goregular.TTF)
+	if err != nil {
+		return nil, err
+	}
+	titleFace, err := opentype.NewFace(parsed, &opentype.FaceOptions{Size: 40, DPI: 72})
+	if err != nil {
+		return nil, err
+	}
+	defer titleFace.Close()
+	face, err := opentype.NewFace(parsed, &opentype.FaceOptions{Size: 24, DPI: 72})
 	if err != nil {
 		return nil, err
 	}
 	defer face.Close()
-	ink := color.RGBA{35, 39, 47, 255}
-	grid := color.RGBA{220, 224, 230, 255}
-	colors := [3]color.RGBA{{35, 105, 205, 255}, {142, 68, 173, 255}, {45, 50, 60, 255}}
-	label := func(x, y int, text string, c color.Color) {
-		d := font.Drawer{Dst: canvas, Src: image.NewUniform(c), Face: face, Dot: fixed.P(x, y)}
-		for font.MeasureString(face, text).Ceil() > 2800 && len(text) > 0 {
-			_, size := utf8.DecodeLastRuneInString(text)
-			text = text[:len(text)-size]
-		}
-		d.DrawString(text)
+	ticks, err := opentype.NewFace(parsed, &opentype.FaceOptions{Size: 22, DPI: 72})
+	if err != nil {
+		return nil, err
 	}
-	line := func(x0, y0, x1, y1 int, c color.RGBA) {
-		dx, dy := x1-x0, y1-y0
-		steps := max(abs(dx), abs(dy))
-		if steps == 0 {
-			canvas.SetRGBA(x0, y0, c)
-			return
-		}
-		for k := 0; k <= steps; k++ {
-			x := x0 + dx*k/steps
-			y := y0 + dy*k/steps
-			canvas.SetRGBA(x, y, c)
-			canvas.SetRGBA(x, y+1, c)
-		}
-	}
-	ypos := func(v float64) int { return bottom - int(math.Round(v/ceiling*float64(bottom-top))) }
-	lastTickY := bottom + 40
-	for _, n := range []float64{0, .01, .1, 1, 10, 50, 100, 200, 400, 600, 1000, 2000, 4000, 10000} {
-		p, _ := NitsToPQ(n)
-		if p > ceiling {
-			continue
-		}
-		y := ypos(p)
-		if lastTickY-y < 30 {
-			continue
-		}
-		lastTickY = y
-		line(left, y, right, y, grid)
-		label(20, y+8, fmt.Sprintf("%g nits", n), ink)
-	}
-	ticks := min(uint64(5), end-start)
-	for j := uint64(0); j <= ticks; j++ {
-		x := left + (right-left)/2
-		if ticks > 0 {
-			x = left + (right-left)*int(j)/int(ticks)
-		}
-		line(x, top, x, bottom, grid)
-		index := start
-		if ticks > 0 {
-			index = start + (end-start)*j/ticks
-		}
-		label(x-25, bottom+42, fmt.Sprint(index), ink)
-	}
-	for series := range 3 {
-		previous := -1
-		for x, b := range buckets {
-			if x%256 == 0 {
-				if err := ctx.Err(); err != nil {
-					return nil, err
-				}
-			}
-			if !b.present {
-				if b.gap {
-					previous = -1
-				}
-				continue
-			}
-			px := left + x
-			lo, hi := ypos(float64(b.lo[series])/4095), ypos(float64(b.hi[series])/4095)
-			line(px, lo, px, hi, colors[series])
-			if lo == hi {
-				for dy := -3; dy <= 3; dy++ {
-					for dx := -3; dx <= 3; dx++ {
-						if dx*dx+dy*dy <= 9 {
-							canvas.SetRGBA(px+dx, lo+dy, colors[series])
-						}
-					}
-				}
-			}
-			if previous >= 0 && !b.gap {
-				p := buckets[previous]
-				line(left+previous, ypos(float64(p.last[series])/4095), px, ypos(float64(b.first[series])/4095), colors[series])
-			}
-			previous = x
-			if b.gap {
-				previous = -1
-			}
-		}
-	}
-	title := o.Title
+	defer ticks.Close()
+	img := image.NewRGBA(image.Rect(0, 0, canvasWidth, canvasHeight))
+	draw.Draw(img, img.Bounds(), image.White, image.Point{}, draw.Src)
 	if title == "" {
-		title = "Dolby Vision L1 brightness metadata"
+		title = "Dolby Vision L1 Dynamic Brightness"
 	}
-	label(left, 55, title, ink)
-	profileNames := []string{}
-	for p, present := range profiles {
-		if present {
-			profileNames = append(profileNames, fmt.Sprint(p))
+	title = fitText(titleFace, title, canvasWidth-120)
+	text(img, titleFace, title, (canvasWidth-font.MeasureString(titleFace, title).Ceil())/2, 64)
+	for i, caption := range data.leftCaptions {
+		right := fitText(face, data.rightCaptions[i], chartRect.Dx()/2)
+		width := chartRect.Dx()
+		if right != "" {
+			width -= font.MeasureString(face, right).Ceil() + 30
+		}
+		text(img, face, fitText(face, caption, width), chartRect.Min.X, 96+i*25)
+		text(img, face, right, chartRect.Max.X-font.MeasureString(face, right).Ceil(), 96+i*25)
+	}
+	ceiling := data.ceiling
+	// Upstream has a degenerate zero range for black metadata; use a finite axis.
+	if ceiling == 0 {
+		ceiling = 1.0 / 4095
+	}
+	drawAxes(img, face, ticks, end-start+1, ceiling)
+	raster := vector.NewRasterizer(chartRect.Dx(), chartRect.Dy())
+	for series := range 3 {
+		if err := drawSeries(ctx, img, raster, a, start, end, series, ceiling); err != nil {
+			return nil, err
 		}
 	}
-	label(left, 99, fmt.Sprintf("%s  |  L1 samples %d / %d plotted (%d total)  |  coverage %s  |  profiles %s", a.Timeline, stats.count, end-start+1, a.length(), a.coverage(), strings.Join(profileNames, ", ")), ink)
-	label(left, 139, fmt.Sprintf("CM2.9 %d · CM4.0 %d · refresh flags %d · L5 samples %d · trim blocks %d", cm29, cm40, scenes, l5, trims), ink)
-	for i, name := range []string{"L1 maximum", "L1 average", "L1 minimum"} {
-		x := left + i*550
-		line(x, 1080, x+60, 1080, colors[i])
-		label(x+80, 1088, name, ink)
-	}
-	s := stats.result()
-	scope := "full timeline"
-	if start != 0 || end != uint64(a.length()-1) {
-		scope = "selected range"
-	}
-	label(left, 1140, fmt.Sprintf("%s [%d–%d] · peak %.2f nits · PQ-mean peak %.2f nits · metadata, not measured pixels", scope, start, end, s.PeakNits, s.PQMeanPeakNits), ink)
-	sourceText := "Source mastering unknown"
-	if sourceCount > 0 {
-		sourceText = fmt.Sprintf("Source mastering PQ %d–%d (%d samples)", source[0], source[1], sourceCount)
-		if sourceMixed {
-			sourceText += "; mixed, first shown"
-		}
-	}
-	l6Text := "L6 absent"
-	if l6Count > 0 {
-		l6Text = fmt.Sprintf("L6 mastering %g–%d nits, CLL/FALL %d/%d (%d samples)", float64(mastering.MinMastering)/10000, mastering.MaxMastering, mastering.MaxCLL, mastering.MaxFALL, l6Count)
-		if l6Mixed {
-			l6Text += "; mixed, first shown"
-		}
-	}
-	label(left, 1180, sourceText+" | "+l6Text, ink)
+	plotFrame(img)
+	drawLegend(img, face, data.labels())
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	return canvas, nil
+	return img, nil
 }
-func abs(v int) int {
-	if v < 0 {
-		return -v
+
+func drawAxes(img *image.RGBA, face, tickFace font.Face, count int, ceiling float64) {
+	peakNits, _ := PQToNits(ceiling)
+	roundedPeak, _ := NitsToPQ(math.Round(peakNits))
+	for _, pq := range plotTicks(ceiling) {
+		if pq < 0 || pq > max(ceiling, roundedPeak) {
+			continue
+		}
+		y := chartRect.Max.Y - int(math.Round(min(pq/ceiling, 1)*float64(chartRect.Dy())))
+		line(img, image.Rect(chartRect.Min.X, y, chartRect.Max.X, y+1).Intersect(chartRect), color.NRGBA{A: 26})
+		n, _ := PQToNits(pq)
+		label := fmt.Sprintf("%g", math.Round(n*1000)/1000)
+		text(img, tickFace, label, chartRect.Min.X-8-font.MeasureString(tickFace, label).Ceil(), y+7)
 	}
-	return v
+	for tick := 0; tick <= count; tick += tickInterval(count, 24) {
+		x := chartRect.Min.X + int(float64(tick)/float64(count)*float64(chartRect.Dx()))
+		line(img, image.Rect(x, chartRect.Min.Y, x+1, chartRect.Max.Y).Intersect(chartRect), color.NRGBA{A: 26})
+		label := fmt.Sprint(tick)
+		text(img, tickFace, label, x-font.MeasureString(tickFace, label).Ceil()/2, chartRect.Max.Y+28)
+	}
+	label := "frames"
+	text(img, face, label, chartRect.Min.X+(chartRect.Dx()-font.MeasureString(face, label).Ceil())/2, 1164)
+	label = "nits (cd/m²)"
+	rot := image.NewRGBA(image.Rect(0, 0, font.MeasureString(face, label).Ceil()+4, 36))
+	text(rot, face, label, 2, 26)
+	top := chartRect.Min.Y + (chartRect.Dy()-rot.Bounds().Dx())/2
+	for y := range rot.Bounds().Dy() {
+		for x := range rot.Bounds().Dx() {
+			img.SetRGBA(62+y, top+rot.Bounds().Dx()-1-x, compositeWhite(rot.RGBAAt(x, y)))
+		}
+	}
+}
+
+func drawSeries(ctx context.Context, img *image.RGBA, raster *vector.Rasterizer, a *Analysis, start, end, series int, ceiling float64) error {
+	w, h := chartRect.Dx(), chartRect.Dy()
+	// Iterate the retained samples directly: no downsampling or per-frame copy.
+	for pass := range 2 {
+		raster.Reset(w, h)
+		raster.DrawOp = draw.Over
+		run := false
+		var px, py float64
+		runLength := 0
+		closeRun := func() {
+			if run && pass == 0 {
+				raster.LineTo(float32(px), float32(h))
+				raster.ClosePath()
+			}
+			run = false
+		}
+		for i := start; i <= end+1; i++ {
+			if i%4096 == 0 {
+				if err := ctx.Err(); err != nil {
+					return err
+				}
+			}
+			var v *L1
+			if i <= end {
+				if r := a.record(i); r != nil && r.DM != nil {
+					v = r.DM.L1
+				}
+			}
+			if v == nil {
+				closeRun()
+				continue
+			}
+			value := [3]uint16{v.MaxPQ, v.AvgPQ, v.MinPQ}[series]
+			x := float64(i-start) / float64(end-start+1) * float64(w)
+			y := (1 - float64(value)/4095/ceiling) * float64(h)
+			if !run {
+				runLength = 0
+				if pass == 0 {
+					raster.MoveTo(float32(x), float32(h))
+					raster.LineTo(float32(x), float32(max(0, y)))
+				}
+			} else if pass == 0 {
+				// Clip before rasterization: offscreen rows still cost work in vector.
+				// Keep the intersection so clipping does not change visible slopes.
+				if (py < 0) != (y < 0) {
+					crossing := px + (x-px)*(-py)/(y-py)
+					raster.LineTo(float32(crossing), 0)
+				}
+				raster.LineTo(float32(x), float32(max(0, y)))
+			} else {
+				// Clip above the max-series range without moving crossing slopes.
+				x0, y0, x1, y1 := px, py, x, y
+				if y0 >= 0 || y1 >= 0 {
+					if y0 < 0 {
+						x0 += (x1 - x0) * (-y0) / (y1 - y0)
+						y0 = 0
+					} else if y1 < 0 {
+						x1 = x0 + (x1-x0)*(-y0)/(y1-y0)
+						y1 = 0
+					}
+					stroke(raster, x0, y0, x1, y1)
+				}
+			}
+			runLength++
+			run = true
+			px, py = x, y
+			if pass == 1 && runLength == 1 {
+				// Keep isolated retained samples visible, without bridging gaps.
+				nextMissing := i == end
+				if !nextMissing {
+					r := a.record(i + 1)
+					nextMissing = r == nil || r.DM == nil || r.DM.L1 == nil
+				}
+				if nextMissing && y >= 0 {
+					// Keep the marker inside the viewport so the axis cannot erase it.
+					mx, my := max(2, x), max(2, min(float64(h)-2, y))
+					raster.MoveTo(float32(mx-2), float32(my-2))
+					raster.LineTo(float32(mx+2), float32(my-2))
+					raster.LineTo(float32(mx+2), float32(my+2))
+					raster.LineTo(float32(mx-2), float32(my+2))
+					raster.ClosePath()
+				}
+			}
+		}
+		c := plotColors[series]
+		if pass == 0 {
+			c.A = [3]uint8{64, 128, 128}[series]
+		}
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		raster.Draw(img, chartRect, image.NewUniform(c), image.Point{})
+	}
+	return nil
+}
+
+func drawLegend(img *image.RGBA, face font.Face, labels [3]string) {
+	width := 0
+	for _, label := range labels {
+		width = max(width, font.MeasureString(face, label).Ceil())
+	}
+	width += 64
+	x, bottom := chartRect.Min.X+12, chartRect.Max.Y-12
+	box := image.Rect(x, bottom-116, x+width, bottom)
+	draw.Draw(img, box, image.White, image.Point{}, draw.Src)
+	for _, r := range []image.Rectangle{image.Rect(box.Min.X, box.Min.Y, box.Max.X, box.Min.Y+1), image.Rect(box.Min.X, box.Max.Y-1, box.Max.X, box.Max.Y), image.Rect(box.Min.X, box.Min.Y, box.Min.X+1, box.Max.Y), image.Rect(box.Max.X-1, box.Min.Y, box.Max.X, box.Max.Y)} {
+		line(img, r, color.Black)
+	}
+	for i, label := range labels {
+		y := box.Min.Y + 28 + i*34
+		line(img, image.Rect(x+12, y-9, x+32, y-7), plotColors[i])
+		text(img, face, label, x+44, y)
+	}
 }

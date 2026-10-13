@@ -8,7 +8,6 @@ import (
 	"fmt"
 	f "github.com/Audionut/go-dovi-extract/internal/testfixture"
 	"image"
-	"image/color"
 	"image/png"
 	"math"
 	"os"
@@ -56,7 +55,7 @@ func TestRenderMetadataCaptions(t *testing.T) {
 	}
 }
 
-func TestDownsampleSpikeAndMissingBucket(t *testing.T) {
+func TestRenderSpikeAndMissingSamples(t *testing.T) {
 	a := testAnalysis(t)
 	base := a.Records[0]
 	a.Records = make([]RPU, 6000)
@@ -72,11 +71,11 @@ func TestDownsampleSpikeAndMissingBucket(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	blue := color.RGBA{35, 105, 205, 255}
+	isBlue := func(x, y int) bool { r, g, b, _ := img.At(x, y).RGBA(); return b > r+10000 && b > g+5000 }
 	found := false
-	for y := 185; y < 200; y++ {
-		for x := 1520; x < 1545; x++ {
-			if img.At(x, y) == blue {
+	for y := chartRect.Min.Y; y < chartRect.Min.Y+20; y++ {
+		for x := 1530; x < 1550; x++ {
+			if isBlue(x, y) {
 				found = true
 			}
 		}
@@ -91,8 +90,8 @@ func TestDownsampleSpikeAndMissingBucket(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for y := 185; y < 990; y++ {
-		if img.At(1535, y) == blue {
+	for y := chartRect.Min.Y + 20; y < chartRect.Max.Y-140; y++ {
+		if isBlue(chartRect.Min.X+chartRect.Dx()/3, y) {
 			t.Fatal("curve bridged gap")
 		}
 	}
@@ -169,7 +168,7 @@ func TestRender(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := fmt.Sprintf("%x", sha256.Sum256(img.(*image.RGBA).Pix)); got != "140a58275af91f06693faeafad7b7bca5eced2d3021bbaa15afeadb375712a48" {
+	if got := fmt.Sprintf("%x", sha256.Sum256(img.(*image.RGBA).Pix)); got != "ea77217140044ea17073354e1d76a7b2a0fbcc32ae21dc9802e9ab23be8500df" {
 		t.Fatalf("pixel golden %s", got)
 	}
 	if img.Bounds().Dx() != 3000 || img.Bounds().Dy() != 1200 {
