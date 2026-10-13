@@ -18,7 +18,11 @@ type Header struct {
 	PreviousID                                      uint64
 }
 
+// L1 contains metadata luminance codes on the 12-bit PQ scale, not decoded-pixel measurements.
 type L1 struct{ MinPQ, MaxPQ, AvgPQ uint16 }
+
+// L5 contains active-area offsets in the metadata's pixel coordinate basis.
+// Applying them to a raster requires an independently established coordinate relationship.
 type L5 struct{ Left, Right, Top, Bottom uint16 }
 
 // L6 units are those encoded on the wire: maximum luminance/CLL/FALL in
@@ -45,6 +49,8 @@ type BaseDM struct {
 	SourceMinPQ, SourceMaxPQ, SourceDiagonal      uint16
 }
 
+// DM owns display-management metadata for one RPU. Nil level pointers mean absent
+// metadata; compressed records do not inherit missing fields from earlier records.
 type DM struct {
 	Compressed                          bool
 	AffectedID, CurrentID, SceneRefresh uint64

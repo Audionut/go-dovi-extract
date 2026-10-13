@@ -10,6 +10,35 @@ import (
 	"testing"
 )
 
+func TestRPUFileRetainedAccounting(t *testing.T) {
+	data := append(f.File(f.Options{}), f.File(f.Options{})...)
+	var parsedBytes int64
+	for _, raw := range []bool{false, true} {
+		budget, err := NewMemoryBudget(16 << 20)
+		if err != nil {
+			t.Fatal(err)
+		}
+		e, err := Extract(t.Context(), bytes.NewReader(data), Options{KeepRaw: raw, Budget: budget})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if e.Timeline != dovi.RPUSequence || e.RetainedBytes() <= 0 {
+			t.Fatalf("standalone records lost retained accounting: timeline=%s bytes=%d", e.Timeline, e.RetainedBytes())
+		}
+		if raw && e.RetainedBytes() <= parsedBytes {
+			t.Fatal("raw retention was not charged")
+		}
+		parsedBytes = e.RetainedBytes()
+		if used, _ := budget.Usage(); used != 0 {
+			t.Fatal("completed read held shared charges")
+		}
+		e.Release()
+		if e.RetainedBytes() != 0 || e.Records != nil {
+			t.Fatal("release retained storage")
+		}
+	}
+}
+
 func TestMatroskaQuotaBoundaries(t *testing.T) {
 	config, sample := containerSample(t, 4)
 	block := mkvTestBlock(t, 0xa3, ebml.Block{TrackNumber: 1, Data: [][]byte{sample}})

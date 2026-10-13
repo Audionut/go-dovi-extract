@@ -5,6 +5,7 @@ import (
 	"slices"
 )
 
+// Timeline identifies whether indices address standalone RPUs, presentation pictures or playlist occurrences.
 type Timeline string
 
 const (
@@ -13,15 +14,22 @@ const (
 	PlaylistFrames     Timeline = "playlist_frames"
 )
 
+// Timestamp is an exact rational time Value/Timescale. Valid false means unknown;
+// a known timestamp requires a nonzero timescale and may have a negative value.
 type Timestamp struct {
 	Value     int64
 	Timescale uint64
 	Valid     bool
 }
+
+// StreamKey distinguishes a source/clip stream using its container-owned track identity.
 type StreamKey struct {
 	SourceID, ClipID string
 	TrackID          uint64
 }
+
+// Picture maps one output presentation entry to source syntax and optional RPU metadata.
+// RPUIndex is meaningful only when HasRPU is true. Playlist occurrences may repeat source pictures.
 type Picture struct {
 	Stream                   StreamKey
 	OccurrenceOrdinal        uint64
@@ -33,7 +41,8 @@ type Picture struct {
 	HasRPU                   bool
 }
 
-// Analysis is the version-1 complete, owned metadata timeline. Counts and
+// Analysis is a complete, owned metadata timeline: schema 1 for files and RPU
+// sequences, schema 2 for playlist frames. Counts and
 // inventories are derived by Summarize, never trusted from a serialized report.
 // Standalone sequences have no Pictures. Raw bytes are intentionally separate.
 type Analysis struct {

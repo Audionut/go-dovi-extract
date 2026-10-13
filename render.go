@@ -16,24 +16,26 @@ import (
 // PlotOptions uses inclusive original timeline indices; nil End differs from
 // an explicit zero. The displayed crop begins at frame zero, like dovi_tool.
 // MaxBytes bounds rendering allocations, excluding input and caller PNG encoding.
-// Zero chooses 48 MiB and finite input limits.
+// MaxInputBytes bounds the input model's conservative accounting separately.
+// Zero limits choose 48 MiB for rendering and 512 MiB for input.
 type PlotOptions struct {
-	Title      string
-	Start, End *uint64
-	MaxBytes   int64
-	MaxRecords int
+	Title         string
+	Start, End    *uint64
+	MaxBytes      int64
+	MaxInputBytes int64
+	MaxRecords    int
 }
 
 // Render returns an opaque 3000×1200 dovi_tool-style L1 plot in PQ coordinates.
 // Missing samples remain gaps rather than synthetic brightness measurements.
 func Render(ctx context.Context, a *Analysis, o PlotOptions) (image.Image, error) {
-	if ctx == nil || o.MaxBytes < 0 || o.MaxRecords < 0 || len(o.Title) > 1024 {
+	if ctx == nil || o.MaxBytes < 0 || o.MaxInputBytes < 0 || o.MaxRecords < 0 || len(o.Title) > 1024 {
 		return nil, ErrInvalidOptions
 	}
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	if err := a.Validate(AnalysisOptions{MaxRecords: o.MaxRecords}); err != nil {
+	if err := a.Validate(AnalysisOptions{MaxRecords: o.MaxRecords, MaxBytes: o.MaxInputBytes}); err != nil {
 		return nil, err
 	}
 	budget := o.MaxBytes

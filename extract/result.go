@@ -17,6 +17,10 @@ type Payload struct {
 	RPU dovi.RPU
 	Raw []byte
 }
+
+// Extraction owns a completed metadata timeline. File reads release shared operation
+// charges before returning; playlist results retain charges until Release.
+// RetainedBytes bounds overlap with conversion copies in either case.
 type Extraction struct {
 	Records                      []Payload
 	Pictures                     []Picture

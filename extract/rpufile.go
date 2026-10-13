@@ -134,6 +134,7 @@ func ReadRPU(ctx context.Context, r io.Reader, opts Options) (*Extraction, error
 	}
 	e.Complete = true
 	e.ObservedRPUs = uint64(len(e.Records))
+	e.retainedBytes = a.used
 	return e, nil
 }
 func nonEOF(err error) error {

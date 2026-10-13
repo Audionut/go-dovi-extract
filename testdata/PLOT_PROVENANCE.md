@@ -52,3 +52,9 @@ dovi_tool.exe plot E:\plot-reference\varying.bin -o E:\plot-reference\rust-varyi
 Actual original-tool PNGs for varying, spike, metadata and crop were inspected
 beside the Go images. Fonts, text metrics and antialiasing are intentionally not
 pixel-identity guarantees. Runtime requires no Rust, external executable or font.
+
+## Full-length output validation
+
+Four additional full-length Rust/Go PNG pairs and anonymized comparison results
+are retained in [real-media-l1](real-media-l1/README.md). They complement the
+reproducible synthetic tests with output checks from complete media inputs.

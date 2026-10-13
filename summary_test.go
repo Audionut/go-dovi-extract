@@ -14,6 +14,30 @@ import (
 	"testing"
 )
 
+func TestRenderLargeInputUsesSeparateBudget(t *testing.T) {
+	a := testAnalysis(t)
+	r := a.Records[0]
+	// Alias caller-owned opaque bytes to exercise conservative input accounting
+	// above 512 MiB without allocating a feature-length metadata corpus.
+	r.Remaining = make([]byte, 1<<20)
+	a = &Analysis{SchemaVersion: 1, Timeline: RPUSequence, Complete: true, ObservedRPUs: 513, Records: make([]RPU, 513)}
+	for i := range a.Records {
+		a.Records[i] = r
+	}
+	if _, err := a.RetainedBytes(AnalysisOptions{MaxBytes: 1 << 30}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Render(t.Context(), a, PlotOptions{MaxBytes: 48 << 20, MaxInputBytes: 1 << 30, MaxRecords: 500000}); err != nil {
+		t.Fatalf("valid caller-owned metadata rejected by render budget: %v", err)
+	}
+	if _, err := Render(t.Context(), a, PlotOptions{MaxBytes: (48 << 20) - 1, MaxInputBytes: 1 << 30}); !errors.Is(err, ErrLimit) {
+		t.Fatalf("render allocation limit lost: %v", err)
+	}
+	if _, err := Render(t.Context(), a, PlotOptions{}); !errors.Is(err, ErrLimit) {
+		t.Fatalf("default input bound lost: %v", err)
+	}
+}
+
 func TestRenderMetadataCaptions(t *testing.T) {
 	for _, field := range []string{"profile-without-DM", "source-mastering", "L6-mastering"} {
 		t.Run(field, func(t *testing.T) {

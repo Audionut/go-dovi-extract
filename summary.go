@@ -5,6 +5,7 @@ import (
 	"slices"
 )
 
+// Coverage describes RPU presence on the output picture timeline; standalone sequences have unknown coverage.
 type Coverage string
 
 const (
@@ -14,6 +15,7 @@ const (
 	CoverageUnknown  Coverage = "unknown"
 )
 
+// Counts separates retained output metadata from observed and suppressed source RPUs.
 type Counts struct {
 	OutputPictures  uint64 `json:"output_pictures"`
 	PicturesWithRPU uint64 `json:"pictures_with_rpu"`
@@ -27,6 +29,8 @@ type Inventory struct {
 	Value uint64 `json:"value"`
 	Count uint64 `json:"count"`
 }
+
+// TrimTarget counts encoded L2 target-PQ values or L8 target indices without converting their units.
 type TrimTarget struct {
 	Level  uint8  `json:"level"`
 	Target uint16 `json:"target"`
@@ -40,6 +44,9 @@ type MasteringL6 struct {
 	Values L6
 	Count  uint64
 }
+
+// L1Statistics summarizes native L1 metadata in nits. PQMean fields average PQ
+// codes before conversion; they are not arithmetic means of linear luminance.
 type L1Statistics struct {
 	Samples            uint64  `json:"samples"`
 	MinimumNits        float64 `json:"minimum_nits"`
@@ -56,6 +63,9 @@ type Raster struct {
 	CoordinateBasis string
 	Applicable      bool
 }
+
+// ActiveAreaRange is an inclusive interval of original timeline indices with equal L5 offsets.
+// Nil Offsets means missing metadata; active dimensions require an applicable Raster.
 type ActiveAreaRange struct {
 	Start, End                uint64
 	Offsets                   *L5
@@ -75,6 +85,9 @@ type EnhancementInventory struct {
 	Type  string `json:"type"`
 	Count uint64 `json:"count"`
 }
+
+// Summary contains derived observations from validated retained output metadata.
+// Scene markers and luminance describe metadata, not independently decoded pictures.
 type Summary struct {
 	ProfileEvidence   string                 `json:"profile_evidence"`
 	EnhancementLayers []EnhancementInventory `json:"enhancement_layers"`
@@ -96,6 +109,9 @@ type Summary struct {
 	L1                *L1Statistics          `json:"l1,omitempty"`
 	Warnings          []Warning              `json:"warnings"`
 }
+
+// SummaryOptions bounds input validation and derived-output accounting and optionally
+// supplies an established L5 raster. Zero limits use the finite AnalysisOptions defaults.
 type SummaryOptions struct {
 	MaxRecords int
 	MaxBytes   int64

@@ -1,0 +1,122 @@
+{
+  "validatedOn": "2026-10-13",
+  "reference": {
+    "tool": "quietvoid/dovi_tool",
+    "revision": "614c816b6446dcd1dbaf433403d499a6026fbb5a"
+  },
+  "scope": "Full-length Dolby Vision L1 output comparisons; neutral case identifiers; source media excluded.",
+  "cases": [
+    {
+      "id": "case-1",
+      "frames": 74537,
+      "l1ValuesCompared": 223611,
+      "mismatchedFrames": 0,
+      "statisticsAbsoluteDifferencesNits": [
+        9.094947017729282e-13,
+        9.111147392104613e-10,
+        0.0,
+        5.4230397950050246e-11,
+        0.0
+      ],
+      "captionsMatch": true,
+      "axisTicksMatch": true,
+      "ceilingMatch": true,
+      "images": [
+        {
+          "file": "case-1-rust.png",
+          "bytes": 174797,
+          "sha256": "2b159fb8d94aa03a4bb16b474b88152bfdcd065730fa50daf5edc0f9faf21fdc"
+        },
+        {
+          "file": "case-1-go.png",
+          "bytes": 245352,
+          "sha256": "9e39cbfceb0528fce2cca64b7796f810f6cc754ddfbca9b569c563d2263f96a0"
+        }
+      ]
+    },
+    {
+      "id": "case-2",
+      "frames": 81773,
+      "l1ValuesCompared": 245319,
+      "mismatchedFrames": 0,
+      "statisticsAbsoluteDifferencesNits": [
+        5.684341886080802e-14,
+        3.248459279348026e-10,
+        2.842170943040401e-14,
+        5.724132279283367e-11,
+        0.0
+      ],
+      "captionsMatch": true,
+      "axisTicksMatch": true,
+      "ceilingMatch": true,
+      "images": [
+        {
+          "file": "case-2-rust.png",
+          "bytes": 153978,
+          "sha256": "1093c81f55db380534b180cfdbf55444fe7f6ad025c42f63c4165a6dbd0f4210"
+        },
+        {
+          "file": "case-2-go.png",
+          "bytes": 203056,
+          "sha256": "ce39ab0784abfb50c703038464d346fe0bd7a8a8759ed0cfaeaa82891924e16e"
+        }
+      ]
+    },
+    {
+      "id": "case-3",
+      "frames": 157432,
+      "l1ValuesCompared": 472296,
+      "mismatchedFrames": 0,
+      "statisticsAbsoluteDifferencesNits": [
+        0.0,
+        2.4773214590823045e-09,
+        2.842170943040401e-14,
+        1.0557243967923569e-10,
+        0.0
+      ],
+      "captionsMatch": true,
+      "axisTicksMatch": true,
+      "ceilingMatch": true,
+      "images": [
+        {
+          "file": "case-3-rust.png",
+          "bytes": 202632,
+          "sha256": "f6de02c4fa7c63a95fb461e5bcd0a82b0971d4e1e6fe9870a9f4adb635819710"
+        },
+        {
+          "file": "case-3-go.png",
+          "bytes": 313538,
+          "sha256": "32422a922119f7d03e8d649b3bf671612c70b992fef80469189300094dfa998c"
+        }
+      ]
+    },
+    {
+      "id": "case-4",
+      "frames": 243974,
+      "l1ValuesCompared": 731922,
+      "mismatchedFrames": 0,
+      "statisticsAbsoluteDifferencesNits": [
+        0.0,
+        5.314319651006372e-09,
+        2.842170943040401e-14,
+        6.460787460582651e-11,
+        0.0
+      ],
+      "captionsMatch": true,
+      "axisTicksMatch": true,
+      "ceilingMatch": true,
+      "images": [
+        {
+          "file": "case-4-rust.png",
+          "bytes": 200848,
+          "sha256": "b307040e97b1fca3e118428273b4cd9cfa10d4a8c8d8da79732e5b5f7bea60c7"
+        },
+        {
+          "file": "case-4-go.png",
+          "bytes": 298866,
+          "sha256": "e368571e64b7ec1a72b0582cc21c1e6cbfe7bf967baba4fd1cd3e882ba60351f"
+        }
+      ]
+    }
+  ]
+}
