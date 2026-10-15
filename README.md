@@ -1,5 +1,8 @@
 # go-dovi-extract
 
+This repository is a Go port of [quietvoid/dovi_tool](https://github.com/quietvoid/dovi_tool),
+created primarily for use with upbrr.
+
 A pure-Go, library-first Dolby Vision RPU reader, HEVC/Matroska extractor,
 structure reporter and L1 metadata plotter. Requires Go 1.27.0. Runtime use needs
 no Rust, libdovi, cgo, FFmpeg, dovi_tool, installed fonts or network access.
